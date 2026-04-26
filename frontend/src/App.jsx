@@ -16,17 +16,24 @@ function App() {
   const [expiries, setExpiries] = useState([])
 
   useEffect(() => {
+    console.log(`[App] Auth state: ${isAuthenticated}. Current View: ${currentView}`);
     if (isAuthenticated) {
+      console.log(`[App] Fetching expiries from ${API_BASE}/expiries...`);
       axios.get(`${API_BASE}/expiries`)
         .then(res => {
+          console.log("[App] Expiries response:", res.data);
           if (res.data.success && res.data.data.length > 0) {
             setExpiries(res.data.data);
             setExpiry(res.data.data[0].value);
+            console.log(`[App] Default expiry set to: ${res.data.data[0].value}`);
           }
         })
-        .catch(err => console.error("Failed to fetch expiries", err));
+        .catch(err => {
+          console.error("[App] Failed to fetch expiries:", err);
+          console.error("[App] Is backend running at 127.0.0.1:8000?");
+        });
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, currentView]);
 
   if (!isAuthenticated) {
     return <Login onLoginSuccess={() => setIsAuthenticated(true)} />

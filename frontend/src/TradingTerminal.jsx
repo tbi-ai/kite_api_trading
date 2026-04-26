@@ -14,13 +14,16 @@ export default function TradingTerminal({ onNavigate, expiry }) {
     setLogs([]);
     setTradeSummary(null);
 
+    console.log(`[Terminal] Initializing trade stream for expiry: ${expiry}...`);
     const eventSource = new EventSource(`${API_BASE}/execute_trade?expiry=${expiry}`);
 
     eventSource.onmessage = (event) => {
       const data = JSON.parse(event.data);
+      console.log("[Terminal] SSE Log Received:", data);
       setLogs((prev) => [...prev, data.log]);
 
       if (data.status === "done" || data.status === "error") {
+        console.log(`[Terminal] Stream finished with status: ${data.status}`);
         setIsTrading(false);
         eventSource.close();
         if (data.status === "done") {
@@ -35,7 +38,7 @@ export default function TradingTerminal({ onNavigate, expiry }) {
     };
 
     eventSource.onerror = (error) => {
-      console.error("SSE Error:", error);
+      console.error("[Terminal] SSE Connection Error:", error);
       eventSource.close();
       setIsTrading(false);
       setLogs((prev) => [...prev, "Fatal error: Connection lost to trading server."]);

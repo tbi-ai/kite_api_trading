@@ -26,19 +26,31 @@ export default function Login({ onLoginSuccess }) {
     setError('');
     setSuccess('');
 
+    console.log(`[Login] Attempting to generate token. API_BASE: ${API_BASE}`);
+    console.log(`[Login] Payload: { request_token: "${requestToken}" }`);
+
     try {
       const response = await axios.post(`${API_BASE}/generate_token`, {
         request_token: requestToken
       });
       
+      console.log("[Login] API Response:", response.data);
+
       if (response.data.success) {
+        console.log("[Login] Success! Access token saved.");
         setSuccess('Access token generated successfully!');
         setTimeout(() => {
           onLoginSuccess();
         }, 1500);
+      } else {
+        console.warn("[Login] API returned success=false:", response.data.error);
+        setError(response.data.error || 'Failed to generate token');
       }
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to generate token');
+      console.error("[Login] Connection or API Error:", err);
+      const msg = err.response?.data?.error || err.message || 'Failed to generate token';
+      console.error("[Login] Final Error Message:", msg);
+      setError(msg);
     } finally {
       setLoading(false);
     }

@@ -56,35 +56,51 @@ def fetch_upcoming_expiries():
 
 def get_market_overview(expiry="26MAY"):
     """
-    Fetches the current spot price, future price, and tracking options range.
-    Uses the provided expiry (e.g. '26MAY') to build the symbols and calculates
-    strike range (1000 below to 1000 above spot).
+    Fetches the current spot price and live premiums for options in range.
     """
     kite = get_kite_session()
-    
     spot_symbol = "NSE:NIFTY 50"
-    fut_symbol = f"NFO:NIFTY{expiry}FUT"
     
     try:
-        quote = kite.quote([spot_symbol, fut_symbol])
-        
-        spot_price = quote[spot_symbol]['last_price']
-        fut_price = quote[fut_symbol]['last_price']
-        
+        # 1. Fetch Spot Price
+        quote_spot = kite.quote([spot_symbol])
+        spot_price = quote_spot[spot_symbol]['last_price']
         rounded_spot = round(spot_price / 100) * 100
         
         lower_bound = rounded_spot - 1000
         upper_bound = rounded_spot + 1000
-        
         strikes = list(range(lower_bound, upper_bound + 100, 100))
         
+        # 2. Build Option Symbols
+        option_symbols = []
+        for s in strikes:
+            option_symbols.append(f"NFO:NIFTY{expiry}{s}CE")
+            option_symbols.append(f"NFO:NIFTY{expiry}{s}PE")
+            
+        # 3. Fetch all Option Quotes
+        # Split into chunks of 50 if needed, though 42 is fine.
+        quotes_opt = kite.quote(option_symbols)
+        
+        # 4. Map prices back to strikes
+        option_data = []
+        for s in strikes:
+            ce_sym = f"NFO:NIFTY{expiry}{s}CE"
+            pe_sym = f"NFO:NIFTY{expiry}{s}PE"
+            
+            option_data.append({
+                "strike": s,
+                "ce_symbol": ce_sym,
+                "ce_price": quotes_opt.get(ce_sym, {}).get('last_price', 0),
+                "pe_symbol": pe_sym,
+                "pe_price": quotes_opt.get(pe_sym, {}).get('last_price', 0)
+            })
+            
         return {
             "spot_price": spot_price,
-            "fut_price": fut_price,
             "rounded_spot": rounded_spot,
-            "strikes": strikes,
+            "options": option_data,
             "lower_range": lower_bound,
             "upper_range": upper_bound
         }
     except Exception as e:
-        raise Exception(f"Failed to fetch market data from Kite: {str(e)}")
+        raise Exception(f"Failed to fetch market data: {str(e)}")

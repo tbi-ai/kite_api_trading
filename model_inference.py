@@ -6,10 +6,6 @@ import time
 from datetime import datetime, timedelta
 from config import get_kite_session
 
-# TensorFlow is heavy; import carefully
-import tensorflow as tf
-from sklearn.preprocessing import MinMaxScaler
-
 # Global cache for LSTM prediction
 _lstm_cache = {
     "prediction": None,
@@ -18,6 +14,7 @@ _lstm_cache = {
 
 def generate_features_from_recent(kite, spot_inst_token):
     """Fetch recent data and generate features for the LSTM."""
+    from sklearn.preprocessing import MinMaxScaler
     end_date = datetime.now()
     start_date = end_date - timedelta(days=5) # Ensure we get 60 periods of 15m
     
@@ -89,6 +86,7 @@ def generate_features_from_recent(kite, spot_inst_token):
 def get_lstm_prediction(kite, spot_inst_token, force_refresh=False):
     """Get cached LSTM prediction or generate a new one if force_refresh is True."""
     global _lstm_cache
+    import tensorflow as tf
     
     if not force_refresh and _lstm_cache["prediction"] is not None:
         return _lstm_cache["prediction"]

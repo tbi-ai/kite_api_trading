@@ -17,22 +17,33 @@ export default function Dashboard({ onLogout, onNavigate, expiry }) {
   const [sessionActive, setSessionActive] = useState(null);
 
   const fetchData = async (forceML = false) => {
-    if (forceML) setMlLoading(true);
+    if (forceML) {
+      setMlLoading(true);
+      console.log("[Dashboard] Manual ML Refresh triggered.");
+    }
+    
     try {
+      console.log(`[Dashboard] Fetching live data for expiry: ${expiry}...`);
       const [dashRes, mlRes, sessRes] = await Promise.all([
         axios.get(`${API_BASE}/dashboard?expiry=${expiry}`),
         axios.get(`${API_BASE}/ml_prediction?force_refresh=${forceML}`),
         axios.get(`${API_BASE}/session_status`)
       ]);
       
+      console.log("[Dashboard] Price Data:", dashRes.data.success ? "OK" : "FAILED", dashRes.data.data);
+      console.log("[Dashboard] ML Signal Data:", mlRes.data.success ? "OK" : "FAILED", mlRes.data.data);
+      console.log("[Dashboard] Session Authenticated:", sessRes.data.authenticated);
+
       if (dashRes.data.success) setData(dashRes.data.data);
       if (mlRes.data?.success) setMlData(mlRes.data.data);
       if (sessRes.data?.success) setSessionActive(sessRes.data.authenticated);
     } catch (err) {
+      console.error("[Dashboard] Fetch Error:", err);
       if (err.response?.status === 401) {
+        console.warn("[Dashboard] 401 Unauthorized - redirecting to login.");
         onLogout();
       } else {
-        setError(err.response?.data?.error || 'Failed to fetch dashboard data');
+        setError(err.response?.data?.error || err.message || 'Failed to fetch dashboard data');
       }
     } finally {
       setLoading(false);
@@ -280,18 +291,6 @@ export default function Dashboard({ onLogout, onNavigate, expiry }) {
             <p style={{ color: 'var(--text-muted)', fontSize: '13px', marginTop: '12px' }}>Rounded ATM: ₹{data?.rounded_spot}</p>
           </div>
 
-          {/* Future Card */}
-          <div className="glass-panel" style={{ padding: '24px', position: 'relative', overflow: 'hidden' }}>
-            <div style={{ color: 'var(--text-muted)', fontSize: '14px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Activity size={16} color="#ec4899" /> Nifty Future
-            </div>
-            <div style={{ fontSize: '36px', fontWeight: '700', display: 'flex', alignItems: 'center' }}>
-              <span style={{ fontSize: '20px', color: 'var(--text-muted)', marginRight: '8px' }}><IndianRupee size={20} /></span>
-              {data?.fut_price}
-            </div>
-            <p style={{ color: 'var(--text-muted)', fontSize: '13px', marginTop: '12px' }}>NFO:NIFTY{expiry}FUT</p>
-          </div>
-
           {/* Range Card */}
           <div className="glass-panel" style={{ padding: '24px', position: 'relative', overflow: 'hidden' }}>
             <div style={{ color: 'var(--text-muted)', fontSize: '14px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -310,37 +309,55 @@ export default function Dashboard({ onLogout, onNavigate, expiry }) {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
               <h2 style={{ margin: 0, fontSize: '20px', fontWeight: '600' }}>Live Option Chain</h2>
               <span style={{ background: 'rgba(59, 130, 246, 0.1)', color: '#60a5fa', padding: '6px 12px', borderRadius: '20px', fontSize: '13px', fontWeight: '600', border: '1px solid rgba(59, 130, 246, 0.2)' }}>
-                {data.strikes.length} Strikes
+                {data.options.length} Strikes
               </span>
             </div>
-
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <div className="glass-panel" style={{ overflow: 'hidden' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
               <thead>
-                <tr>
-                  <th style={{ textAlign: 'right', padding: '16px', color: 'var(--text-muted)', fontSize: '13px', textTransform: 'uppercase', borderBottom: '1px solid var(--glass-border)' }}>Call Option (CE)</th>
-                  <th style={{ textAlign: 'center', padding: '16px', color: 'var(--text-muted)', fontSize: '13px', textTransform: 'uppercase', borderBottom: '1px solid var(--glass-border)' }}>Strike Price</th>
-                  <th style={{ textAlign: 'left', padding: '16px', color: 'var(--text-muted)', fontSize: '13px', textTransform: 'uppercase', borderBottom: '1px solid var(--glass-border)' }}>Put Option (PE)</th>
+                <tr style={{ background: 'rgba(255,255,255,0.03)', borderBottom: '1px solid var(--glass-border)' }}>
+                  <th style={{ padding: '16px 24px', fontSize: '12px', fontWeight: '700', color: 'var(--bullish)', textTransform: 'uppercase' }}>CALL PREMIUM</th>
+                  <th style={{ padding: '16px 24px', fontSize: '12px', fontWeight: '700', color: 'var(--text-muted)', textAlign: 'center' }}>STRIKE</th>
+                  <th style={{ padding: '16px 24px', fontSize: '12px', fontWeight: '700', color: 'var(--bearish)', textTransform: 'uppercase', textAlign: 'right' }}>PUT PREMIUM</th>
                 </tr>
               </thead>
               <tbody>
-                {data.strikes.map((strike) => (
-                  <tr key={strike} style={{ background: strike === data.rounded_spot ? 'rgba(255,255,255,0.03)' : 'transparent' }}>
-                    <td style={{ padding: '16px', fontSize: '15px', color: 'var(--bullish)', textAlign: 'right', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                      NIFTY{expiry}{strike}CE
-                    </td>
-                    <td style={{ padding: '16px', fontSize: '15px', fontWeight: '600', color: strike === data.rounded_spot ? '#fcd34d' : 'var(--text-main)', textAlign: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                      {strike}
-                      {strike === data.rounded_spot && (
-                        <span style={{ fontSize: '10px', verticalAlign: 'top', marginLeft: '6px', color: '#fcd34d', border: '1px solid #fcd34d', padding: '2px 4px', borderRadius: '4px' }}>ATM</span>
-                      )}
-                    </td>
-                    <td style={{ padding: '16px', fontSize: '15px', color: 'var(--bearish)', textAlign: 'left', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                      NIFTY{expiry}{strike}PE
-                    </td>
-                  </tr>
-                ))}
+                {data?.options?.map((opt, idx) => {
+                  const isATM = opt.strike === data.rounded_spot;
+                  return (
+                    <tr key={idx} style={{ 
+                      borderBottom: '1px solid rgba(255,255,255,0.03)',
+                      background: isATM ? 'rgba(59, 130, 246, 0.05)' : 'transparent',
+                      transition: 'background 0.2s'
+                    }}>
+                      <td style={{ padding: '16px 24px' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                          <span style={{ color: 'var(--bullish)', fontWeight: '700', fontSize: '16px' }}>₹{opt.ce_price.toFixed(2)}</span>
+                          <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.3)', fontFamily: 'monospace' }}>{opt.ce_symbol.split(':').pop()}</span>
+                        </div>
+                      </td>
+                      <td style={{ padding: '16px 24px', textAlign: 'center' }}>
+                        <div style={{ 
+                          display: 'inline-block', padding: '4px 12px', borderRadius: '6px',
+                          background: isATM ? 'var(--primary)' : 'rgba(255,255,255,0.05)',
+                          color: isATM ? 'white' : 'var(--text-main)',
+                          fontWeight: '800', fontSize: '14px', border: isATM ? 'none' : '1px solid rgba(255,255,255,0.1)'
+                        }}>
+                          {opt.strike}
+                        </div>
+                      </td>
+                      <td style={{ padding: '16px 24px', textAlign: 'right' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                          <span style={{ color: 'var(--bearish)', fontWeight: '700', fontSize: '16px' }}>₹{opt.pe_price.toFixed(2)}</span>
+                          <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.3)', fontFamily: 'monospace' }}>{opt.pe_symbol.split(':').pop()}</span>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
+          </div>
           </div>
         )}
       </div>
