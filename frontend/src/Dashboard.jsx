@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Activity, IndianRupee, Layers, Zap, TrendingUp, TrendingDown, MinusCircle, AlertCircle } from 'lucide-react';
 import axios from 'axios';
 
@@ -15,6 +15,12 @@ export default function Dashboard({ onLogout, onNavigate, expiry }) {
   const [isTraining, setIsTraining] = useState(false);
   const [trainingLogs, setTrainingLogs] = useState([]);
   const [sessionActive, setSessionActive] = useState(null);
+  
+  const trainingLogsEndRef = useRef(null);
+
+  useEffect(() => {
+    trainingLogsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [trainingLogs]);
 
   const fetchData = async (forceML = false) => {
     if (forceML) {
@@ -186,6 +192,7 @@ export default function Dashboard({ onLogout, onNavigate, expiry }) {
               {isTraining && (
                 <div style={{ animation: 'pulse 1s infinite', color: 'var(--accent)', marginLeft: '4px' }}>_</div>
               )}
+              <div ref={trainingLogsEndRef} />
             </div>
           </div>
         </div>

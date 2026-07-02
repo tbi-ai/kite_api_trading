@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Play, Square, Terminal, IndianRupee, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Play, Square, Terminal, IndianRupee, AlertCircle, CheckCircle2, RefreshCw } from 'lucide-react';
 
 const API_BASE = 'http://127.0.0.1:8000/api';
 
@@ -119,6 +119,9 @@ export default function TradingTerminal({ onNavigate, expiry }) {
               <div>
                 <div style={{ fontSize: '18px', fontWeight: '700', marginBottom: '4px' }}>Trade Complete</div>
                 <div style={{ color: 'var(--text-muted)', fontSize: '14px' }}>{tradeSummary.log}</div>
+                <div style={{ color: 'var(--primary)', fontSize: '12px', marginTop: '6px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <RefreshCw size={12} className="animate-spin" /> Auto-redirecting to Performance History...
+                </div>
               </div>
             </div>
             <div style={{ textAlign: 'right' }}>

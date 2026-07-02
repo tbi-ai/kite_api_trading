@@ -216,3 +216,15 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Sensitive files
+trading.db
+trading.db-journal
+credentials.json
+.env
+
+# Backtest reports
+backtest_results_*.csv
+
+# Vite build output
+frontend/dist/

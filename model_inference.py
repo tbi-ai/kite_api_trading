@@ -1,10 +1,9 @@
 import pandas as pd
-import pandas_ta as ta
 import numpy as np
+import pandas_ta as ta
 import os
 import time
 from datetime import datetime, timedelta
-from config import get_kite_session
 
 # Global cache for LSTM prediction
 _lstm_cache = {
@@ -79,142 +78,93 @@ def generate_features_from_recent(kite, spot_inst_token):
     
     # Scale features
     scaler = MinMaxScaler()
-    X_scaled = scaler.fit_transform(X) # Note: For strict correctness, we should use the scaler saved from training. For simplicity in this iteration, we fit on recent data.
+    X_scaled = scaler.fit_transform(X)
     
     return np.array([X_scaled]) # Shape (1, 60, 12)
 
+_cached_model = None
+
 def get_lstm_prediction(kite, spot_inst_token, force_refresh=False):
-    """Get cached LSTM prediction or generate a new one if force_refresh is True."""
-    global _lstm_cache
+    """
+    Returns the LSTM model's predicted next-15-minute close price for NIFTY 50.
+
+    IMPORTANT — this is a REGRESSION output, NOT a probability:
+      - The model was trained with a linear Dense(1) head and MSE loss.
+      - Target was: next_close - current_close  (signed price delta in points).
+      - The raw output is therefore a *predicted next close price* (after the
+        MinMaxScaler inverse is approximated by comparing to current_price).
+      - There is no softmax, no sigmoid, no percentage. Direction is determined
+        by whether pred > current_price (BULL) or pred < current_price (BEAR).
+
+    Use get_lstm_direction() for a pre-computed direction + confidence string.
+    """
+    global _lstm_cache, _cached_model
     import tensorflow as tf
-    
+
+    # Cache for 1 minute
     if not force_refresh and _lstm_cache["prediction"] is not None:
-        return _lstm_cache["prediction"]
-        
+        if time.time() - _lstm_cache["timestamp"] < 60:
+            return _lstm_cache["prediction"]
+
     try:
-        model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "nifty_lstm.keras")
-        if not os.path.exists(model_path):
-            print("Model file not found.")
-            return 0.0
-            
-        # Load model and run prediction
-        # To avoid re-loading model constantly, we could cache it too, but let's stick to user request.
-        model = tf.keras.models.load_model(model_path)
+        if _cached_model is None:
+            model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "nifty_lstm.keras")
+            if not os.path.exists(model_path):
+                print("Model file not found. Returning None.")
+                return None
+            _cached_model = tf.keras.models.load_model(model_path)
+
         X_input = generate_features_from_recent(kite, spot_inst_token)
-        
+
         if X_input is None:
-            return 0.0
-            
-        pred = model.predict(X_input, verbose=0)
+            return None
+
+        pred = _cached_model.predict(X_input, verbose=0)
         result = float(pred[0][0])
-        
+
         _lstm_cache["prediction"] = result
         _lstm_cache["timestamp"] = time.time()
         return result
     except Exception as e:
         print(f"LSTM Prediction Error: {e}")
-        return 0.0
+        return None
 
-def get_ml_signals(force_refresh=False):
+
+def get_lstm_direction(kite, spot_inst_token, current_price, force_refresh=False):
     """
-    Fetches real-time price, calculates indicators, generates signals,
-    and fetches live LSTM deep learning prediction.
+    Converts the raw LSTM regression output into a directional signal.
+
+    Returns a dict:
+        {
+          "direction":      "BULL" | "BEAR" | None,
+          "predicted_price": float | None,
+          "delta_points":    float | None,   # predicted_price - current_price
+          "confidence_pct":  float | None,   # |delta| as % of current_price
+        }
+
+    confidence_pct reflects how far the model predicts price will move — a
+    larger predicted move = higher confidence in that direction.
+    None is returned for all fields if the model or data is unavailable.
     """
-    kite = get_kite_session()
-    
-    spot_symbol = "NSE:NIFTY 50"
-    quote = kite.quote(spot_symbol)
-    
-    if spot_symbol not in quote:
-        raise ValueError("Failed to fetch quote for NIFTY 50")
-        
-    instrument_token = quote[spot_symbol]['instrument_token']
-    
-    # Fetch 1 min data for rule-based indicators
-    end_date = datetime.now()
-    start_date = end_date - timedelta(days=2)
-    data = kite.historical_data(
-        instrument_token, 
-        start_date.strftime("%Y-%m-%d"), 
-        end_date.strftime("%Y-%m-%d"), 
-        'minute'
+    predicted_price = get_lstm_prediction(kite, spot_inst_token, force_refresh=force_refresh)
+
+    if predicted_price is None:
+        return {"direction": None, "predicted_price": None, "delta_points": None, "confidence_pct": None}
+
+    delta = predicted_price - current_price
+    direction = "BULL" if delta > 0 else "BEAR"
+    # Express the predicted move as a % of current price (e.g. 0.15% move)
+    confidence_pct = round(abs(delta) / current_price * 100, 3)
+
+    print(
+        f"[LSTM] predicted={predicted_price:.2f} current={current_price:.2f} "
+        f"delta={delta:+.2f}pts direction={direction} confidence={confidence_pct}%"
     )
-    
-    df = pd.DataFrame(data)
-    df['date'] = pd.to_datetime(df['date'])
-    df.set_index('date', inplace=True)
-    
-    # Calculate Indicators
-    df['EMA9'] = ta.ema(df['close'], length=9)
-    df['EMA21'] = ta.ema(df['close'], length=21)
-    df['RSI14'] = ta.rsi(df['close'], length=14)
-    df['RSI6'] = ta.rsi(df['close'], length=6)
-    
-    macd = ta.macd(df['close'])
-    if macd is not None and not macd.empty:
-        df['MACD'] = macd['MACD_12_26_9']
-    else:
-        df['MACD'] = 0
-        
-    st = ta.supertrend(df['high'], df['low'], df['close'], length=10, multiplier=3)
-    if st is not None and not st.empty:
-        df['SuperTrend'] = st[st.columns[0]]
-    else:
-        df['SuperTrend'] = df['close']
-        
-    bb = ta.bbands(df['close'], length=20, std=2)
-    squeeze_active = False
-    if bb is not None and not bb.empty:
-        bb_upper_col = next((col for col in bb.columns if 'BBU' in col), None)
-        bb_lower_col = next((col for col in bb.columns if 'BBL' in col), None)
-        df['BB_upper'] = bb[bb_upper_col]
-        df['BB_lower'] = bb[bb_lower_col]
-        df['BB_width'] = (df['BB_upper'] - df['BB_lower']) / df['close']
-        
-        if df['BB_width'].iloc[-1] < 0.001:
-            squeeze_active = True
-            
-    current_price = df['close'].iloc[-1]
-    prev_price = df['close'].iloc[-2]
-    
-    rsi14 = df['RSI14'].iloc[-1]
-    rsi6 = df['RSI6'].iloc[-1]
-    ema9 = df['EMA9'].iloc[-1]
-    ema21 = df['EMA21'].iloc[-1]
-    macd_val = df['MACD'].iloc[-1]
-    supertrend_val = df['SuperTrend'].iloc[-1]
-    
-    # Generate Rule-Based Signal
-    signal = "NO_SIGNAL"
-    
-    if not squeeze_active:
-        if (current_price > ema9 and ema9 > ema21) and \
-           (rsi14 > 55 and rsi6 > 60) and \
-           (macd_val > 0) and \
-           (current_price > supertrend_val):
-            signal = "BULL"
-            
-        elif (current_price < ema9 and ema9 < ema21) and \
-             (rsi14 < 45 and rsi6 < 40) and \
-             (macd_val < 0) and \
-             (current_price < supertrend_val):
-            signal = "BEAR"
-
-    # Get LSTM Prediction
-    lstm_prediction = get_lstm_prediction(kite, instrument_token, force_refresh)
 
     return {
-        "signal": signal,
-        "squeeze_active": squeeze_active,
-        "lstm_prediction": round(lstm_prediction, 2),
-        "lstm_timestamp": _lstm_cache["timestamp"],
-        "indicators": {
-            "current_price": round(current_price, 2),
-            "rsi14": round(rsi14, 2) if not pd.isna(rsi14) else 0,
-            "rsi6": round(rsi6, 2) if not pd.isna(rsi6) else 0,
-            "ema9": round(ema9, 2) if not pd.isna(ema9) else 0,
-            "ema21": round(ema21, 2) if not pd.isna(ema21) else 0,
-            "macd": round(macd_val, 2) if not pd.isna(macd_val) else 0,
-            "supertrend": round(supertrend_val, 2) if not pd.isna(supertrend_val) else 0
-        }
+        "direction": direction,
+        "predicted_price": round(predicted_price, 2),
+        "delta_points": round(delta, 2),
+        "confidence_pct": confidence_pct,
     }
+

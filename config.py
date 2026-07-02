@@ -1,10 +1,13 @@
 import os
 import json
 from kiteconnect import KiteConnect
+from dotenv import load_dotenv
 
-# Centralized Kite API credentials
-API_KEY = "wthlsr41oawqdeoz"
-API_SECRET = "agvml7dbwicte27ijiswgpdqnlww2ho0"
+# Load environment variables from .env file
+load_dotenv()
+
+API_KEY = os.getenv("API_KEY", "")
+API_SECRET = os.getenv("API_SECRET", "")
 
 def get_kite_session():
     """
@@ -34,3 +37,24 @@ def get_kite_session():
     kite.set_access_token(access_token)
     
     return kite
+
+def set_current_expiry(expiry_val):
+    """Saves the selected expiry globally in credentials.json."""
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    credentials_path = os.path.join(current_dir, "credentials.json")
+    if os.path.exists(credentials_path):
+        with open(credentials_path, "r") as f:
+            data = json.load(f)
+        data["selected_expiry"] = expiry_val
+        with open(credentials_path, "w") as f:
+            json.dump(data, f)
+
+def get_current_expiry():
+    """Fetches the globally selected expiry from credentials.json."""
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    credentials_path = os.path.join(current_dir, "credentials.json")
+    if os.path.exists(credentials_path):
+        with open(credentials_path, "r") as f:
+            data = json.load(f)
+            return data.get("selected_expiry", "26MAY")
+    return "26MAY"

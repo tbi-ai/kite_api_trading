@@ -10,6 +10,8 @@ export default function Login({ onLoginSuccess }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [isFocused, setIsFocused] = useState(false);
+  const [autoExtracted, setAutoExtracted] = useState(false);
 
   useEffect(() => {
     // Fetch the login URL from the backend
@@ -94,20 +96,57 @@ export default function Login({ onLoginSuccess }) {
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: '24px' }}>
             <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', color: 'var(--text-muted)', fontWeight: '600' }}>
-              Request Token
+              Request Token or Redirect URL
             </label>
             <input 
               type="text" 
               value={requestToken}
-              onChange={(e) => setRequestToken(e.target.value)}
-              placeholder="e.g. jB9mX..." 
+              onChange={(e) => {
+                const val = e.target.value.trim();
+                if (val.includes('request_token=')) {
+                  try {
+                    const url = new URL(val);
+                    const token = url.searchParams.get('request_token');
+                    if (token) {
+                      setRequestToken(token);
+                      setAutoExtracted(true);
+                      setTimeout(() => setAutoExtracted(false), 4000);
+                      return;
+                    }
+                  } catch (err) {
+                    const match = val.match(/[?&]request_token=([^&]+)/);
+                    if (match && match[1]) {
+                      setRequestToken(match[1]);
+                      setAutoExtracted(true);
+                      setTimeout(() => setAutoExtracted(false), 4000);
+                      return;
+                    }
+                  }
+                }
+                setRequestToken(e.target.value);
+              }}
+              onFocus={() => setIsFocused(true)}
+              onBlur={() => setIsFocused(false)}
+              placeholder="Paste request token or entire redirect URL here..." 
               required
               style={{
                 width: '100%', padding: '14px 16px', background: 'rgba(0, 0, 0, 0.2)',
-                border: '1px solid var(--glass-border)', borderRadius: '10px', color: 'white',
-                fontSize: '15px', outline: 'none'
+                border: isFocused ? '1px solid var(--primary)' : '1px solid var(--glass-border)',
+                boxShadow: isFocused ? '0 0 10px rgba(59, 130, 246, 0.3)' : 'none',
+                borderRadius: '10px', color: 'white',
+                fontSize: '15px', outline: 'none',
+                transition: 'all 0.2s'
               }}
             />
+            {autoExtracted ? (
+              <div className="animate-fade-in" style={{ fontSize: '12px', color: 'var(--bullish)', marginTop: '8px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                ✨ Auto-extracted request token from pasted URL!
+              </div>
+            ) : (
+              <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '8px' }}>
+                Tip: Paste the complete URL from your browser address bar after redirection to auto-extract the token.
+              </div>
+            )}
           </div>
           <button 
             type="submit" 

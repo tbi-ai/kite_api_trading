@@ -3,7 +3,8 @@ import Login from './Login'
 import Dashboard from './Dashboard'
 import TradingTerminal from './TradingTerminal'
 import StatsDashboard from './StatsDashboard'
-import { LayoutDashboard, TerminalSquare, BarChart3, LogOut } from 'lucide-react'
+import SettingsPanel from './SettingsPanel'
+import { LayoutDashboard, TerminalSquare, BarChart3, LogOut, Settings as SettingsIcon } from 'lucide-react'
 import axios from 'axios'
 import './index.css'
 
@@ -11,9 +12,27 @@ const API_BASE = 'http://127.0.0.1:8000/api';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [currentView, setCurrentView] = useState('market') // 'market', 'terminal', 'stats'
-  const [expiry, setExpiry] = useState('26MAY')
+  const [currentView, setCurrentView] = useState('market')
+  const [expiry, setExpiry] = useState('')
   const [expiries, setExpiries] = useState([])
+
+  const handleExpiryChange = (newExpiry) => {
+    setExpiry(newExpiry);
+    console.log(`[App] Syncing global expiry to: ${newExpiry}`);
+    axios.get(`${API_BASE}/set_expiry?expiry=${newExpiry}`)
+      .catch(err => console.error("[App] Failed to sync expiry with backend", err));
+  };
+
+  useEffect(() => {
+    // Check if user is already authenticated on mount
+    axios.get(`${API_BASE}/session_status`)
+      .then(res => {
+        if (res.data.authenticated) {
+          setIsAuthenticated(true);
+        }
+      })
+      .catch(err => console.error("Failed to check session status", err));
+  }, []);
 
   useEffect(() => {
     console.log(`[App] Auth state: ${isAuthenticated}. Current View: ${currentView}`);
@@ -24,16 +43,18 @@ function App() {
           console.log("[App] Expiries response:", res.data);
           if (res.data.success && res.data.data.length > 0) {
             setExpiries(res.data.data);
-            setExpiry(res.data.data[0].value);
-            console.log(`[App] Default expiry set to: ${res.data.data[0].value}`);
+            const initialExpiry = res.data.data[0].value;
+            setExpiry(initialExpiry);
+            console.log(`[App] Default expiry set to: ${initialExpiry}`);
+            // Sync initial expiry
+            axios.get(`${API_BASE}/set_expiry?expiry=${initialExpiry}`);
           }
         })
         .catch(err => {
           console.error("[App] Failed to fetch expiries:", err);
-          console.error("[App] Is backend running at 127.0.0.1:8000?");
         });
     }
-  }, [isAuthenticated, currentView]);
+  }, [isAuthenticated]);
 
   if (!isAuthenticated) {
     return <Login onLoginSuccess={() => setIsAuthenticated(true)} />
@@ -65,13 +86,20 @@ function App() {
             <BarChart3 size={18} /> Statistics
           </button>
           
+          <button 
+            onClick={() => setCurrentView('settings')}
+            style={{ display: 'flex', alignItems: 'center', gap: '8px', background: currentView === 'settings' ? 'rgba(59, 130, 246, 0.15)' : 'transparent', border: 'none', color: currentView === 'settings' ? 'var(--primary)' : 'var(--text-muted)', cursor: 'pointer', fontSize: '14px', fontWeight: '600', padding: '8px 16px', borderRadius: '8px', transition: 'all 0.2s' }}
+          >
+            <SettingsIcon size={18} /> Settings
+          </button>
+          
           <div style={{ width: '1px', background: 'var(--glass-border)', margin: '0 8px' }}></div>
           
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(255,255,255,0.05)', padding: '4px 12px', borderRadius: '8px', border: '1px solid var(--glass-border)' }}>
             <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: '600', textTransform: 'uppercase' }}>Expiry:</span>
             <select 
               value={expiry}
-              onChange={(e) => setExpiry(e.target.value)}
+              onChange={(e) => handleExpiryChange(e.target.value)}
               style={{ background: 'transparent', border: 'none', color: 'white', fontSize: '14px', fontWeight: '700', outline: 'none', cursor: 'pointer' }}
             >
               {expiries.length > 0 ? (
@@ -102,6 +130,7 @@ function App() {
         {currentView === 'market' && <Dashboard onLogout={() => setIsAuthenticated(false)} onNavigate={setCurrentView} expiry={expiry} />}
         {currentView === 'terminal' && <TradingTerminal onNavigate={setCurrentView} expiry={expiry} />}
         {currentView === 'stats' && <StatsDashboard onNavigate={setCurrentView} />}
+        {currentView === 'settings' && <SettingsPanel />}
       </div>
     </div>
   )
